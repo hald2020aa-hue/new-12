@@ -257,7 +257,8 @@ class MangaViewModel(application: Application) : AndroidViewModel(application) {
     fun testSourceConnection(source: SourceEntity, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val urlObj = java.net.URL(source.url)
+                val cleanUrl = com.example.data.model.MangaSourceConfig.sanitizeUrl(source.url)
+                val urlObj = java.net.URL(cleanUrl)
                 val conn = urlObj.openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 6000
                 conn.readTimeout = 6000
@@ -275,7 +276,12 @@ class MangaViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(false, "استجابة غير متوقعة: HTTP $code")
                 }
             } catch (e: java.net.UnknownHostException) {
-                onResult(false, "خطأ في اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)")
+                val mirrors = com.example.data.model.MangaSourceConfig.getMirrorsForSource(source.id)
+                if (mirrors.size > 1) {
+                    onResult(false, "حجب DNS على النطاق الرئيسي (تتوفر مرايا بديلة ⚡)")
+                } else {
+                    onResult(false, "خطأ في اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)")
+                }
             } catch (e: Exception) {
                 onResult(false, "فشل الاتصال: ${e.message ?: "مهلة الاتصال"}")
             }

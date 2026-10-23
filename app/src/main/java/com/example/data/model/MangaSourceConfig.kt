@@ -85,4 +85,50 @@ object MangaSourceConfig {
     val DEFAULT_SOURCE_ID = "src_mangalik"
 
     fun getValidSourceIds(): List<String> = OFFICIAL_SOURCES.map { it.id }
+
+    /**
+     * الروابط والمرايا المعتمدة والبديلة لكل مصدر لتجاوز حجب مزودي الخدمة (DNS Block)
+     * أو بطء النطاقات الأساسية.
+     */
+    val SOURCE_MIRRORS: Map<String, List<String>> = mapOf(
+        "src_mangadar" to listOf("https://mangadar.com", "https://www.mangadar.com"),
+        "src_mangalik" to listOf("https://mangalik.net", "https://www.mangalik.net", "https://manga-lek.com"),
+        "src_azora" to listOf("https://azorafly.com", "https://www.azorafly.com"),
+        "src_mangatek" to listOf("https://mangatek.com", "https://www.mangatek.com"),
+        "src_procomic" to listOf("https://procomic.pro", "https://www.procomic.pro"),
+        "src_mangastarz" to listOf("https://starzmanga.com", "https://www.starzmanga.com", "https://mangastarz.com"),
+        "src_teamx" to listOf("https://olympustaff.com", "https://www.olympustaff.com"),
+        "src_swat" to listOf("https://meshmanga.com", "https://www.meshmanga.com", "https://swatmanga.me")
+    )
+
+    fun getMirrorsForSource(sourceId: String): List<String> {
+        return SOURCE_MIRRORS[sourceId] ?: emptyList()
+    }
+
+    /**
+     * تنظيف وفحص أي رابط وإزالة أي شرطات مائلة إضافية أو مسافات،
+     * مع التأكد من إضافة بروتوكول HTTPS إذا لم يُكتب.
+     */
+    fun sanitizeUrl(rawUrl: String): String {
+        var clean = rawUrl.trim()
+        while (clean.startsWith("/")) {
+            clean = clean.removePrefix("/").trim()
+        }
+        if (!clean.startsWith("http://", ignoreCase = true) && !clean.startsWith("https://", ignoreCase = true)) {
+            clean = "https://$clean"
+        }
+        return clean
+    }
+
+    fun getNextMirror(sourceId: String, currentUrl: String): String {
+        val mirrors = getMirrorsForSource(sourceId)
+        if (mirrors.isEmpty()) return currentUrl
+        val cleanCurrent = sanitizeUrl(currentUrl).trimEnd('/')
+        val idx = mirrors.indexOfFirst { sanitizeUrl(it).trimEnd('/') == cleanCurrent }
+        return if (idx >= 0 && idx + 1 < mirrors.size) {
+            mirrors[idx + 1]
+        } else {
+            mirrors.first()
+        }
+    }
 }

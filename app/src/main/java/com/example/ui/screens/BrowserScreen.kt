@@ -37,8 +37,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -81,10 +89,12 @@ fun BrowserScreen(
         if (allSources.isNotEmpty()) allSources else MangaSourceConfig.OFFICIAL_SOURCES
     }
 
-    var currentSource by remember(availableSources, initialUrl) {
+    val cleanInitialUrl = remember(initialUrl) { MangaSourceConfig.sanitizeUrl(initialUrl) }
+
+    var currentSource by remember(availableSources, cleanInitialUrl) {
         mutableStateOf(
-            availableSources.firstOrNull { it.url.contains(initialUrl.removePrefix("https://").take(8), ignoreCase = true) }
-                ?: availableSources.firstOrNull { it.url == initialUrl }
+            availableSources.firstOrNull { it.url.contains(cleanInitialUrl.removePrefix("https://").take(8), ignoreCase = true) }
+                ?: availableSources.firstOrNull { it.url == cleanInitialUrl }
                 ?: availableSources.firstOrNull()
                 ?: MangaSourceConfig.OFFICIAL_SOURCES.first()
         )
@@ -100,7 +110,9 @@ fun BrowserScreen(
 
     // WebView state & Error diagnosis
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
-    var currentWebUrl by remember { mutableStateOf(initialUrl) }
+    var currentWebUrl by remember { mutableStateOf(cleanInitialUrl) }
+    var urlInputText by remember { mutableStateOf(cleanInitialUrl) }
+    var isEditingUrl by remember { mutableStateOf(false) }
     var pageTitle by remember { mutableStateOf(currentSource.name) }
     var isLoading by remember { mutableFloatStateOf(0f) }
     var isPageLoading by remember { mutableStateOf(false) }
@@ -108,6 +120,22 @@ fun BrowserScreen(
     var hasError by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     var errorFailingUrl by remember { mutableStateOf("") }
+
+    val loadTargetUrl: (String) -> Unit = { target ->
+        val clean = MangaSourceConfig.sanitizeUrl(target)
+        currentWebUrl = clean
+        urlInputText = clean
+        hasError = false
+        errorMessage = ""
+        isEditingUrl = false
+        webViewInstance?.loadUrl(clean)
+    }
+
+    val tryNextMirror: () -> Unit = {
+        val nextMirror = MangaSourceConfig.getNextMirror(currentSource.id, currentWebUrl)
+        viewModel.postNotification("جاري تجربة المرآة البديلة: $nextMirror ⚡")
+        loadTargetUrl(nextMirror)
+    }
 
     // Intercept hardware back button
     BackHandler {
@@ -233,8 +261,7 @@ fun BrowserScreen(
                             onClick = {
                                 viewMode = BrowserViewMode.WEBVIEW
                                 hasError = false
-                                currentWebUrl = currentSource.url
-                                webViewInstance?.loadUrl(currentSource.url)
+                                loadTargetUrl(currentSource.url)
                             }
                         )
                     }
@@ -476,30 +503,128 @@ fun BrowserScreen(
 
                             Spacer(modifier = Modifier.width(4.dp))
 
-                            // Address Bar with SSL Lock Icon
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF091222))
-                                    .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (hasError) Icons.Default.Warning else Icons.Default.Lock,
-                                        contentDescription = "حالة الأمان",
-                                        tint = if (hasError) Color(0xFFFF5252) else Color(0xFF00E676),
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = currentWebUrl,
-                                        color = TextPrimary,
-                                        fontSize = 11.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                            // Interactive Address Bar with SSL Lock Icon & Mirror Switcher
+                            if (!isEditingUrl) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF091222))
+                                        .border(
+                                            1.dp,
+                                            if (hasError) Color(0xFFFF5252).copy(alpha = 0.5f) else colors.border,
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable {
+                                            urlInputText = currentWebUrl
+                                            isEditingUrl = true
+                                        }
+                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (hasError) Icons.Default.Warning else Icons.Default.Lock,
+                                                contentDescription = "حالة الأمان",
+                                                tint = if (hasError) Color(0xFFFF5252) else Color(0xFF00E676),
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Text(
+                                                    text = currentWebUrl,
+                                                    color = TextPrimary,
+                                                    fontSize = 11.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    style = TextStyle(textDirection = TextDirection.Ltr)
+                                                )
+                                            }
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            val mirrors = MangaSourceConfig.getMirrorsForSource(currentSource.id)
+                                            if (mirrors.size > 1) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AltRoute,
+                                                    contentDescription = "تبديل المرآة",
+                                                    tint = colors.primary,
+                                                    modifier = Modifier
+                                                        .size(16.dp)
+                                                        .clickable { tryNextMirror() }
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                            }
+                                            Icon(
+                                                imageVector = Icons.Default.Edit,
+                                                contentDescription = "تعديل الرابط",
+                                                tint = TextSecondary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color(0xFF0D182E))
+                                        .border(1.dp, colors.primary, RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                            androidx.compose.foundation.text.BasicTextField(
+                                                value = urlInputText,
+                                                onValueChange = { urlInputText = it },
+                                                singleLine = true,
+                                                textStyle = TextStyle(
+                                                    color = TextPrimary,
+                                                    fontSize = 11.sp,
+                                                    textDirection = TextDirection.Ltr
+                                                ),
+                                                cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Uri,
+                                                    imeAction = ImeAction.Go
+                                                ),
+                                                keyboardActions = KeyboardActions(
+                                                    onGo = { loadTargetUrl(urlInputText) }
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { loadTargetUrl(urlInputText) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ArrowForward,
+                                                contentDescription = "انتقال",
+                                                tint = colors.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { isEditingUrl = false },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "إلغاء",
+                                                tint = TextSecondary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
@@ -568,6 +693,12 @@ fun BrowserScreen(
                                         settings.builtInZoomControls = true
                                         settings.displayZoomControls = false
                                         settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                        settings.allowContentAccess = true
+                                        settings.allowFileAccess = true
+                                        settings.loadsImagesAutomatically = true
+                                        settings.blockNetworkImage = false
+                                        setNetworkAvailable(true)
                                         settings.userAgentString =
                                             "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
@@ -576,7 +707,11 @@ fun BrowserScreen(
                                                 super.onPageStarted(view, url, favicon)
                                                 isPageLoading = true
                                                 hasError = false
-                                                url?.let { currentWebUrl = it }
+                                                url?.let {
+                                                    val clean = MangaSourceConfig.sanitizeUrl(it)
+                                                    currentWebUrl = clean
+                                                    urlInputText = clean
+                                                }
                                             }
 
                                             override fun onPageFinished(view: WebView?, url: String?) {
@@ -600,14 +735,19 @@ fun BrowserScreen(
                                                 }
                                             }
 
+                                            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: android.net.http.SslError?) {
+                                                // Prevent SSL handshake failures from breaking pages on fansub/mirror domains
+                                                handler?.proceed()
+                                            }
+
                                             @Deprecated("Deprecated in Java")
                                             override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                                                 super.onReceivedError(view, errorCode, description, failingUrl)
                                                 hasError = true
-                                                errorFailingUrl = failingUrl ?: currentWebUrl
+                                                errorFailingUrl = MangaSourceConfig.sanitizeUrl(failingUrl ?: currentWebUrl)
                                                 errorMessage = when (errorCode) {
-                                                    ERROR_HOST_LOOKUP -> "تعذر حل اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)\nتحقق من اتصال الإنترنت أو صحة عنوان الموقع."
-                                                    ERROR_CONNECT -> "فشل الاتصال بخادم الموقع (ERR_CONNECTION_REFUSED)"
+                                                    ERROR_HOST_LOOKUP -> "تعذر حل اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)\nقد يكون الموقع محجوباً من مزود الإنترنت المحلي أو تم تغيير نطاقه. جرّب إحدى المرايا البديلة المعتمدة أدناه."
+                                                    ERROR_CONNECT -> "فشل الاتصال بخادم الموقع (ERR_CONNECTION_REFUSED)\nالموقع غير متاح مؤقتاً، جرّب مرآة بديلة أو الكتالوج المدمج."
                                                     ERROR_TIMEOUT -> "انتهت مهلة انتظار خادم الموقع (ERR_TIMED_OUT)"
                                                     ERROR_FAILED_SSL_HANDSHAKE -> "فشل تأمين الاتصال المشفر (SSL Handshake Failed)"
                                                     else -> description ?: "حدث خطأ في تحميل الصفحة ($errorCode)"
@@ -619,10 +759,10 @@ fun BrowserScreen(
                                                 super.onReceivedError(view, request, error)
                                                 if (request?.isForMainFrame == true) {
                                                     hasError = true
-                                                    errorFailingUrl = request.url?.toString() ?: currentWebUrl
+                                                    errorFailingUrl = MangaSourceConfig.sanitizeUrl(request.url?.toString() ?: currentWebUrl)
                                                     val desc = error?.description?.toString() ?: ""
                                                     errorMessage = if (desc.contains("NAME_NOT_RESOLVED", ignoreCase = true)) {
-                                                        "تعذر حل اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)\nتحقق من اتصال الإنترنت أو صحة عنوان الموقع."
+                                                        "تعذر حل اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)\nقد يكون الموقع محجوباً من مزود الإنترنت المحلي. استخدم إحدى المرايا البديلة المعتمدة أدناه أو اختر مصدراً آخر."
                                                     } else {
                                                         "تعذر تحميل الموقع: $desc"
                                                     }
@@ -658,8 +798,8 @@ fun BrowserScreen(
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .background(Color(0xF5040712))
-                                        .padding(24.dp),
+                                        .background(Color(0xF8030612))
+                                        .padding(16.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     GlassCard(
@@ -669,12 +809,12 @@ fun BrowserScreen(
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .padding(20.dp),
+                                                .padding(18.dp),
                                             horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(56.dp)
+                                                    .size(52.dp)
                                                     .clip(CircleShape)
                                                     .background(Color(0x33FF5252)),
                                                 contentAlignment = Alignment.Center
@@ -683,16 +823,16 @@ fun BrowserScreen(
                                                     imageVector = Icons.Default.CloudOff,
                                                     contentDescription = null,
                                                     tint = Color(0xFFFF5252),
-                                                    modifier = Modifier.size(32.dp)
+                                                    modifier = Modifier.size(28.dp)
                                                 )
                                             }
 
-                                            Spacer(modifier = Modifier.height(14.dp))
+                                            Spacer(modifier = Modifier.height(12.dp))
 
                                             Text(
-                                                text = "تعذر الوصول إلى الموقع",
+                                                text = "تعذر فتح المصدر: ${currentSource.name}",
                                                 color = TextPrimary,
-                                                fontSize = 16.sp,
+                                                fontSize = 15.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
 
@@ -701,42 +841,157 @@ fun BrowserScreen(
                                             Text(
                                                 text = errorMessage,
                                                 color = TextSecondary,
-                                                fontSize = 12.sp,
+                                                fontSize = 11.sp,
                                                 textAlign = TextAlign.Center,
-                                                lineHeight = 18.sp
+                                                lineHeight = 16.sp
                                             )
 
-                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Spacer(modifier = Modifier.height(6.dp))
 
+                                            // Failing URL with explicit LTR Layout
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Text(
+                                                    text = errorFailingUrl,
+                                                    color = colors.primary,
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    style = TextStyle(textDirection = TextDirection.Ltr)
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(14.dp))
+
+                                            // SECTION 1: Alternative Mirrors for Current Source
+                                            val mirrors = MangaSourceConfig.getMirrorsForSource(currentSource.id)
+                                            if (mirrors.size > 1) {
+                                                Text(
+                                                    text = "المرايا والنطاقات البديلة لـ ${currentSource.name}:",
+                                                    color = Color(0xFFFFD54F),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.align(Alignment.Start)
+                                                )
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    mirrors.forEach { mirrorUrl ->
+                                                        val isCurrent = mirrorUrl == currentWebUrl || mirrorUrl.trimEnd('/') == currentWebUrl.trimEnd('/')
+                                                        val hostLabel = try {
+                                                            java.net.URI(mirrorUrl).host ?: mirrorUrl
+                                                        } catch (e: Exception) {
+                                                            mirrorUrl
+                                                        }
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .weight(1f)
+                                                                .clip(RoundedCornerShape(8.dp))
+                                                                .background(if (isCurrent) colors.primary.copy(alpha = 0.25f) else Color(0xFF091428))
+                                                                .border(
+                                                                    1.dp,
+                                                                    if (isCurrent) colors.primary else colors.border,
+                                                                    RoundedCornerShape(8.dp)
+                                                                )
+                                                                .clickable { loadTargetUrl(mirrorUrl) }
+                                                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                                Text(
+                                                                    text = hostLabel,
+                                                                    color = if (isCurrent) colors.primary else TextPrimary,
+                                                                    fontSize = 9.sp,
+                                                                    fontWeight = FontWeight.Medium,
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(10.dp))
+                                            }
+
+                                            // SECTION 2: Switch to Other Official Sources
                                             Text(
-                                                text = errorFailingUrl,
-                                                color = colors.primary,
-                                                fontSize = 10.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                text = "أو اختر أحد المصادر الرسمية الأخرى (7 مواقع):",
+                                                color = TextSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                modifier = Modifier.align(Alignment.Start)
                                             )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            LazyRow(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                items(availableSources.filter { it.id != currentSource.id }) { otherSrc ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(8.dp))
+                                                            .background(Color(0xFF081224))
+                                                            .border(1.dp, colors.border, RoundedCornerShape(8.dp))
+                                                            .clickable {
+                                                                currentSource = otherSrc
+                                                                loadTargetUrl(otherSrc.url)
+                                                                viewModel.postNotification("تم التبديل إلى: ${otherSrc.name} ⚡")
+                                                            }
+                                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                                    ) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(Color(0xFF00E676))
+                                                            )
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Text(
+                                                                text = otherSrc.name,
+                                                                color = TextPrimary,
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
 
-                                            Spacer(modifier = Modifier.height(18.dp))
+                                            Spacer(modifier = Modifier.height(16.dp))
 
+                                            // Main Action Buttons
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
                                                 Button(
                                                     onClick = {
-                                                        hasError = false
-                                                        webViewInstance?.loadUrl(currentSource.url)
+                                                        if (mirrors.size > 1) {
+                                                            tryNextMirror()
+                                                        } else {
+                                                            loadTargetUrl(currentWebUrl)
+                                                        }
                                                     },
                                                     colors = ButtonDefaults.buttonColors(
                                                         containerColor = colors.primary,
                                                         contentColor = Color.Black
                                                     ),
                                                     shape = RoundedCornerShape(12.dp),
-                                                    modifier = Modifier.weight(1f)
+                                                    modifier = Modifier.weight(1.2f)
                                                 ) {
-                                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Icon(
+                                                        imageVector = if (mirrors.size > 1) Icons.Default.AltRoute else Icons.Default.Refresh,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
                                                     Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("إعادة المحاولة", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Text(
+                                                        text = if (mirrors.size > 1) "تجربة مرآة بديلة ⚡" else "إعادة المحاولة",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
                                                 }
 
                                                 OutlinedButton(
@@ -745,18 +1000,49 @@ fun BrowserScreen(
                                                     modifier = Modifier.weight(1f),
                                                     border = androidx.compose.foundation.BorderStroke(1.dp, colors.border)
                                                 ) {
-                                                    Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primary)
+                                                    Icon(
+                                                        imageVector = Icons.Default.GridView,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = colors.primary
+                                                    )
                                                     Spacer(modifier = Modifier.width(4.dp))
                                                     Text("الكتالوج", color = TextPrimary, fontSize = 11.sp)
                                                 }
                                             }
 
-                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Spacer(modifier = Modifier.height(6.dp))
 
-                                            TextButton(
-                                                onClick = { showSourcePickerSheet = true }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text("اختيار مصدر آخر من المصادر الثمانية ◄", color = colors.primary, fontSize = 11.sp)
+                                                TextButton(
+                                                    onClick = {
+                                                        urlInputText = currentWebUrl
+                                                        isEditingUrl = true
+                                                    }
+                                                ) {
+                                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp), tint = colors.primary)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("تعديل الرابط يدوياً", color = colors.primary, fontSize = 10.sp)
+                                                }
+
+                                                TextButton(
+                                                    onClick = {
+                                                        try {
+                                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentWebUrl))
+                                                            context.startActivity(intent)
+                                                        } catch (e: Exception) {
+                                                            viewModel.postNotification("تعذر فتح الرابط")
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(14.dp), tint = TextSecondary)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("فتح في Chrome", color = TextSecondary, fontSize = 10.sp)
+                                                }
                                             }
                                         }
                                     }
