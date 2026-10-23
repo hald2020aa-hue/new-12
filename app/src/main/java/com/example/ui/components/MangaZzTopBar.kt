@@ -107,13 +107,13 @@ fun MangaZzTopBar(
                 }
             }
 
-            // Manga ZZ Logo
+            // Manga V Logo
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = "Manga ZZ",
+                    text = "Manga V",
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp,

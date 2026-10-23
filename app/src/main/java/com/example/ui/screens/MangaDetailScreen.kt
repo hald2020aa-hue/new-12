@@ -143,7 +143,7 @@ fun MangaDetailScreen(
                                     .clickable {
                                         val sendIntent = android.content.Intent().apply {
                                             action = android.content.Intent.ACTION_SEND
-                                            putExtra(android.content.Intent.EXTRA_TEXT, "اقرأ مانجا ${manga.titleArabic} (${manga.title}) على تطبيق Manga ZZ!")
+                                            putExtra(android.content.Intent.EXTRA_TEXT, "اقرأ مانجا ${manga.titleArabic} (${manga.title}) على تطبيق Manga V!")
                                             type = "text/plain"
                                         }
                                         val shareIntent = android.content.Intent.createChooser(sendIntent, "مشاركة المانجا")

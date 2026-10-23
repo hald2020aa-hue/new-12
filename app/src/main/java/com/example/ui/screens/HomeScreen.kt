@@ -312,7 +312,7 @@ fun HomeScreen(
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "يمكنك فتح مواقع المانجا مباشرة داخل Manga ZZ لتجربة قراءة سلسة وآمنة دون الحاجة لترك التطبيق.",
+                                text = "يمكنك فتح مواقع المانجا مباشرة داخل Manga V لتجربة قراءة سلسة وآمنة دون الحاجة لترك التطبيق.",
                                 color = TextSecondary,
                                 fontSize = 11.sp,
                                 lineHeight = 16.sp

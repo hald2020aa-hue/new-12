@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "Manga ZZ"
+rootProject.name = "New 7"
 
 include(":app")

@@ -49,7 +49,7 @@ fun SettingsScreen(
         topBar = {
             MangaZzTopBar(
                 title = "الإعدادات والمظهر",
-                subtitle = "خصص تجربتك في Manga ZZ بالشكل الذي يناسبك",
+                subtitle = "خصص تجربتك في Manga V بالشكل الذي يناسبك",
                 onProClick = { viewModel.navigateTo(SubScreen.Backup) }
             )
         },

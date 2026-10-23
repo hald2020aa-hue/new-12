@@ -4,7 +4,7 @@ import com.example.data.local.SourceEntity
 
 object MangaSourceConfig {
     /**
-     * القائمة الرسمية المعتمدة للمصادر الثمانية في تطبيق Manga ZZ:
+     * القائمة الرسمية المعتمدة للمصادر الثمانية في تطبيق Manga V:
      * 1. MangaDar (https://mangadar.com)
      * 2. مانجا ليك — Manga Lik (https://mangalik.net)
      * 3. Azora Manga (https://azorafly.com)

@@ -112,7 +112,7 @@ class MangaRepository(
         val root = JSONObject()
         root.put("version", "2.4.0")
         root.put("exportDate", System.currentTimeMillis())
-        root.put("appName", "Manga ZZ")
+        root.put("appName", "Manga V")
 
         val mangaArray = JSONArray()
         val mangaList = mangaDao.getAllManga()
