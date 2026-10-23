@@ -1,0 +1,6 @@
+{
+  "name": "Manga ZZ",
+  "description": "تطبيق Manga ZZ المتكامل لقراءة وتصفح المانجا مع ميزة القراءة والتحميل دون إنترنت (Offline Reading)، وقارئ مزود بالترجمة الفورية، ومتصفح ويب داخلي، ومكتبة سحابية ومحلية متقدمة.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
