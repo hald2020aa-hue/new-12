@@ -9,8 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,11 +18,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.SourceEntity
+import com.example.data.model.MangaSourceConfig
 import com.example.ui.components.GlassCard
 import com.example.ui.components.MangaZzTopBar
 import com.example.ui.theme.*
@@ -39,10 +42,15 @@ fun SourcesScreen(
 
     var selectedFilterIndex by remember { mutableIntStateOf(0) } // 0: الكل, 1: مدمجة, 2: مخصصة
     var searchQuery by remember { mutableStateOf("") }
-    var showAddSourceDialog by remember { mutableStateOf(false) }
+    var showExportJsonDialog by remember { mutableStateOf(false) }
+    var exportedJson by remember { mutableStateOf("") }
 
-    val filteredSources = remember(allSources, selectedFilterIndex, searchQuery) {
-        allSources.filter { src ->
+    val displaySources = remember(allSources) {
+        if (allSources.isNotEmpty()) allSources else MangaSourceConfig.OFFICIAL_SOURCES
+    }
+
+    val filteredSources = remember(displaySources, selectedFilterIndex, searchQuery) {
+        displaySources.filter { src ->
             val matchesFilter = when (selectedFilterIndex) {
                 1 -> src.isBuiltIn
                 2 -> !src.isBuiltIn
@@ -55,14 +63,14 @@ fun SourcesScreen(
         }
     }
 
-    val builtInCount = allSources.count { it.isBuiltIn }
-    val customCount = allSources.count { !it.isBuiltIn }
+    val builtInCount = displaySources.count { it.isBuiltIn }
+    val customCount = displaySources.count { !it.isBuiltIn }
 
     Scaffold(
         topBar = {
             MangaZzTopBar(
-                title = "المصادر",
-                subtitle = "إدارة مواقع مانجا المدمجة والمخصصة داخل التطبيق",
+                title = "المصادر الرسمية (${displaySources.size})",
+                subtitle = "المواقع الثمانية المعتمدة لتصفح وقراءة المانجا",
                 onProClick = { viewModel.navigateTo(SubScreen.Backup) }
             )
         },
@@ -95,28 +103,32 @@ fun SourcesScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Info,
+                                imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = colors.primary,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = "تفتح جميع المصادر داخل التطبيق بدون الحاجة لترك التطبيق.",
-                            color = TextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
+                        Column {
+                            Text(
+                                text = "تم اعتماد المواقع الثمانية الرسمية وحذف المصادر القديمة",
+                                color = TextPrimary,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "تعمل جميع المواقع داخل المتصفح المدمج مع حماية كاملة ضد أخطاء الاتصال.",
+                                color = TextSecondary,
+                                fontSize = 10.sp
+                            )
+                        }
                     }
                 }
             }
 
-            // Search Bar
+            // Interactive Search Bar
             item {
-                var showExportDialog by remember { mutableStateOf(false) }
-                var exportedJsonText by remember { mutableStateOf("") }
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -139,18 +151,18 @@ fun SourcesScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            androidx.compose.foundation.text.BasicTextField(
+                            BasicTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
-                                textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 13.sp),
-                                cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+                                textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                                cursorBrush = SolidColor(colors.primary),
                                 modifier = Modifier.weight(1f),
                                 decorationBox = { innerTextField ->
                                     if (searchQuery.isEmpty()) {
                                         Text(
-                                            text = "ابحث عن موقع مانجا ...",
+                                            text = "ابحث بين المواقع الثمانية المعتمدة...",
                                             color = TextSecondary,
-                                            fontSize = 13.sp
+                                            fontSize = 12.sp
                                         )
                                     }
                                     innerTextField()
@@ -199,7 +211,7 @@ fun SourcesScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterTabButton(
-                        title = "الكل (${allSources.size})",
+                        title = "الكل (${displaySources.size})",
                         icon = Icons.Default.GridView,
                         isSelected = selectedFilterIndex == 0,
                         onClick = { selectedFilterIndex = 0 },
@@ -207,7 +219,7 @@ fun SourcesScreen(
                     )
                     FilterTabButton(
                         title = "مدمجة ($builtInCount)",
-                        icon = Icons.Default.Settings,
+                        icon = Icons.Default.Check,
                         isSelected = selectedFilterIndex == 1,
                         onClick = { selectedFilterIndex = 1 },
                         modifier = Modifier.weight(1f)
@@ -222,11 +234,8 @@ fun SourcesScreen(
                 }
             }
 
-            // Action Buttons: إضافة موقع +, استيراد, تصدير
+            // Action Buttons: تحديث ومزامنة المصادر الثمانية, تصدير
             item {
-                var showExportJsonDialog by remember { mutableStateOf(false) }
-                var exportedJson by remember { mutableStateOf("") }
-
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -234,7 +243,9 @@ fun SourcesScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Button(
-                        onClick = { showAddSourceDialog = true },
+                        onClick = {
+                            viewModel.resetToOfficialSources()
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = colors.primary,
                             contentColor = Color.Black
@@ -244,36 +255,16 @@ fun SourcesScreen(
                         contentPadding = PaddingValues(vertical = 10.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
+                            imageVector = Icons.Default.Sync,
                             contentDescription = null,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "إضافة موقع",
+                            text = "مزامنة المواقع الثمانية",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            viewModel.importSourcesPreset()
-                        },
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(vertical = 10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Download,
-                            contentDescription = null,
-                            tint = colors.primary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "استيراد", fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
 
                     OutlinedButton(
@@ -302,11 +293,11 @@ fun SourcesScreen(
                     AlertDialog(
                         onDismissRequest = { showExportJsonDialog = false },
                         title = {
-                            Text("تصدير المصادر (JSON)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("تصدير المصادر المعتمدة (JSON)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         },
                         text = {
                             Column {
-                                Text("تم تجهيز قائمة المصادر بنجاح بصيغة JSON:", color = TextSecondary, fontSize = 12.sp)
+                                Text("قائمة المصادر الثمانية المعتمدة:", color = TextSecondary, fontSize = 12.sp)
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Box(
                                     modifier = Modifier
@@ -327,7 +318,7 @@ fun SourcesScreen(
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    viewModel.postNotification("تم حفظ وتصدير المصادر بنجاح!")
+                                    viewModel.postNotification("تم نسخ وتصدير بيانات المواقع بنجاح!")
                                     showExportJsonDialog = false
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.Black)
@@ -340,86 +331,21 @@ fun SourcesScreen(
                 }
             }
 
-            // Sources List
+            // Sources List Items
             items(filteredSources, key = { it.id }) { src ->
                 SourceItemCard(
                     source = src,
-                    onClick = {
+                    onOpenBrowser = {
                         viewModel.navigateTo(SubScreen.Browser(src.url))
                     },
-                    onDelete = {
-                        viewModel.deleteSource(src.id)
+                    onTestConnection = { onResult ->
+                        viewModel.testSourceConnection(src) { isOk, message ->
+                            onResult(isOk, message)
+                        }
                     }
                 )
             }
         }
-    }
-
-    // Add Source Dialog
-    if (showAddSourceDialog) {
-        var newName by remember { mutableStateOf("") }
-        var newUrl by remember { mutableStateOf("https://") }
-
-        AlertDialog(
-            onDismissRequest = { showAddSourceDialog = false },
-            title = {
-                Text(
-                    text = "إضافة مصدر مانجا مخصص",
-                    color = TextPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = "أدخل اسم الموقع ورابط HTTPS:",
-                        color = TextSecondary,
-                        fontSize = 12.sp
-                    )
-                    OutlinedTextField(
-                        value = newName,
-                        onValueChange = { newName = it },
-                        label = { Text("اسم المصدر (مثال: مانجا العرب)") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
-                            unfocusedBorderColor = colors.border
-                        )
-                    )
-                    OutlinedTextField(
-                        value = newUrl,
-                        onValueChange = { newUrl = it },
-                        label = { Text("رابط الموقع (URL)") },
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = colors.primary,
-                            unfocusedBorderColor = colors.border
-                        )
-                    )
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (newName.isNotBlank() && newUrl.isNotBlank()) {
-                            viewModel.addCustomSource(newName, newUrl)
-                            showAddSourceDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.Black)
-                ) {
-                    Text("حفظ واختبار")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddSourceDialog = false }) {
-                    Text("إلغاء", color = TextSecondary)
-                }
-            },
-            containerColor = Color(0xFF0D1424),
-            shape = RoundedCornerShape(18.dp)
-        )
     }
 }
 
@@ -469,149 +395,194 @@ fun FilterTabButton(
 @Composable
 fun SourceItemCard(
     source: SourceEntity,
-    onClick: () -> Unit,
-    onDelete: () -> Unit
+    onOpenBrowser: () -> Unit,
+    onTestConnection: (onResult: (Boolean, String) -> Unit) -> Unit
 ) {
     val colors = LocalMangaZzColors.current
-
-    val (statusLabel, statusColor) = when (source.status) {
-        "WORKING" -> Pair("يعمل بشكل جيد", StatusSuccess)
-        "SLOW" -> Pair("بطيء أحياناً", StatusWarning)
-        else -> Pair("غير متاح حالياً", StatusError)
-    }
+    var isEnabled by remember { mutableStateOf(true) }
+    var isTesting by remember { mutableStateOf(false) }
+    var testResultText by remember { mutableStateOf<String?>(null) }
+    var testIsSuccess by remember { mutableStateOf(true) }
 
     GlassCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 5.dp),
-        onClick = onClick
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        onClick = onOpenBrowser
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(14.dp)
         ) {
-            // Drag handle 6 dots icon
-            Icon(
-                imageVector = Icons.Default.DragIndicator,
-                contentDescription = null,
-                tint = TextSecondary,
-                modifier = Modifier.size(20.dp)
-            )
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Delete action
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x22FF5368))
-                    .clickable { onDelete() },
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Delete,
-                    contentDescription = "حذف",
-                    tint = Color(0xFFFF5368),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            // Edit action
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colors.primary.copy(alpha = 0.15f))
-                    .clickable { },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = "تعديل",
-                    tint = colors.primary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            // Name and URL
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = source.name,
-                    color = TextPrimary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = source.url,
-                    color = TextSecondary,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Status dot & label
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(statusColor)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                // Source Initial Avatar
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(colors.primary.copy(alpha = 0.15f))
+                        .border(1.dp, colors.primary.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
                     Text(
-                        text = statusLabel,
-                        color = statusColor,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold
+                        text = source.name.take(2).uppercase(),
+                        color = colors.primary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
                     )
+                }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-                    // Type Tag (مدمجة / مخصصة)
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0x3300D2FF))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
+                // Name and URL
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = if (source.isBuiltIn) "مدمجة" else "مخصصة",
-                            color = colors.primary,
-                            fontSize = 8.sp,
-                            fontWeight = FontWeight.Bold
+                            text = source.name,
+                            color = TextPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(if (isEnabled) Color(0xFF00E676) else TextSecondary)
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = source.url,
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Enable/Disable Switch
+                Switch(
+                    checked = isEnabled,
+                    onCheckedChange = { isEnabled = it },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.Black,
+                        checkedTrackColor = colors.primary,
+                        uncheckedThumbColor = TextSecondary,
+                        uncheckedTrackColor = Color(0xFF091427)
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Description / Note
+            Text(
+                text = source.description,
+                color = TextSecondary,
+                fontSize = 11.sp,
+                lineHeight = 15.sp
+            )
+
+            // Test Result display if tested
+            if (testResultText != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (testIsSuccess) Color(0x1F00E676) else Color(0x1FFF5252))
+                        .border(
+                            1.dp,
+                            if (testIsSuccess) Color(0x4D00E676) else Color(0x4DFF5252),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = if (testIsSuccess) Icons.Default.CheckCircle else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = if (testIsSuccess) Color(0xFF00E676) else Color(0xFFFF5252),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = testResultText ?: "",
+                        color = if (testIsSuccess) Color(0xFF00E676) else Color(0xFFFF5252),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Logo Icon Avatar on right
-            Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color(0xFF081224))
-                    .border(1.dp, colors.border, RoundedCornerShape(12.dp)),
-                contentAlignment = Alignment.Center
+            // Action Buttons: "فحص الاتصال", "فتح في المتصفح"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = source.name.take(2).uppercase(),
-                    color = colors.primary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Black
-                )
+                OutlinedButton(
+                    onClick = {
+                        isTesting = true
+                        testResultText = "جاري فحص الاتصال بـ ${source.name}..."
+                        onTestConnection { success, message ->
+                            isTesting = false
+                            testIsSuccess = success
+                            testResultText = message
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
+                    contentPadding = PaddingValues(vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.NetworkCheck,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = if (isTesting) "جاري الفحص..." else "فحص الاتصال",
+                        color = TextPrimary,
+                        fontSize = 11.sp
+                    )
+                }
+
+                Button(
+                    onClick = onOpenBrowser,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = colors.primary.copy(alpha = 0.2f),
+                        contentColor = colors.primary
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.primary.copy(alpha = 0.5f)),
+                    contentPadding = PaddingValues(vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Language,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "فتح المتصفح",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }

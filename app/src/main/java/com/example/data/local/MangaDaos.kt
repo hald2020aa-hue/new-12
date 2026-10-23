@@ -77,6 +77,12 @@ interface SourceDao {
 
     @Query("DELETE FROM sources WHERE id = :id")
     suspend fun deleteSource(id: String)
+
+    @Query("SELECT * FROM sources")
+    suspend fun getAllSourcesList(): List<SourceEntity>
+
+    @Query("DELETE FROM sources WHERE id NOT IN (:validIds)")
+    suspend fun deleteOldSourcesExcept(validIds: List<String>)
 }
 
 @Dao

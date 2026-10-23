@@ -7,6 +7,7 @@ import com.example.data.local.*
 import com.example.data.model.AppColorTheme
 import com.example.data.model.ReadingDirection
 import com.example.data.repository.MangaRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -16,7 +17,7 @@ sealed class SubScreen {
     object Main : SubScreen()
     data class MangaDetail(val mangaId: String) : SubScreen()
     object Downloads : SubScreen()
-    data class Browser(val url: String = "https://mangadex.org") : SubScreen()
+    data class Browser(val url: String = "https://mangalik.net") : SubScreen()
     object Backup : SubScreen()
     data class ReaderFull(val mangaId: String, val chapterNumber: Int, val isOffline: Boolean = false) : SubScreen()
 }
@@ -246,17 +247,38 @@ class MangaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun importSourcesPreset() {
+    fun resetToOfficialSources() {
         viewModelScope.launch {
-            val presets = listOf(
-                Pair("GManga", "https://gmanga.org"),
-                Pair("ArabManga", "https://arabmanga.net"),
-                Pair("Webtoon AR", "https://www.webtoons.com/ar")
-            )
-            presets.forEach { (name, url) ->
-                repository.addCustomSource(name, url)
+            repository.syncOfficialSources()
+            _notificationMessage.emit("تمت مزامنة المصادر الرسمية الثمانية وحذف المواقع القديمة ⚡")
+        }
+    }
+
+    fun testSourceConnection(source: SourceEntity, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val urlObj = java.net.URL(source.url)
+                val conn = urlObj.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
+                conn.setRequestProperty(
+                    "User-Agent",
+                    "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+                )
+                conn.requestMethod = "HEAD"
+                val code = conn.responseCode
+                if (code in 200..399) {
+                    onResult(true, "متصل بنجاح (HTTP $code) ✓")
+                } else if (code == 403) {
+                    onResult(true, "محمي بواسطة Cloudflare (يعمل في المتصفح الداخلي ⚡)")
+                } else {
+                    onResult(false, "استجابة غير متوقعة: HTTP $code")
+                }
+            } catch (e: java.net.UnknownHostException) {
+                onResult(false, "خطأ في اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)")
+            } catch (e: Exception) {
+                onResult(false, "فشل الاتصال: ${e.message ?: "مهلة الاتصال"}")
             }
-            _notificationMessage.emit("تم استيراد ${presets.size} مصادر إضافية بنجاح ⚡")
         }
     }
 

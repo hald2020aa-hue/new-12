@@ -130,8 +130,16 @@ class MangaRepository(
         onCleared(bytesBefore)
     }
 
+    suspend fun syncOfficialSources() {
+        sourceDao.deleteOldSourcesExcept(com.example.data.model.MangaSourceConfig.getValidSourceIds())
+        sourceDao.insertSources(com.example.data.model.MangaSourceConfig.OFFICIAL_SOURCES)
+    }
+
     suspend fun seedInitialDataIfEmpty() {
-        // Check if database needs seeding
+        // Purge old sources and keep only the 8 official sources
+        syncOfficialSources()
+
+        // Check if manga database needs initial seeding
         val existing = mangaDao.getMangaByIdOnce("solo_leveling")
         if (existing == null) {
             val defaultManga = listOf(
@@ -376,18 +384,8 @@ class MangaRepository(
             )
             chapterDao.insertChapters(chapters)
 
-            // Seed Sources
-            val defaultSources = listOf(
-                SourceEntity("src_mangadex", "MangaDex", "https://mangadex.org", true, "WORKING", "أكبر مجتمع مفتوح للمانجا متعدد اللغات"),
-                SourceEntity("src_mangasee", "MangaSee", "https://mangasee123.com", true, "WORKING", "تحديثات يومية وسريعة للفصول المترجمة"),
-                SourceEntity("src_mangaplus", "MangaPlus", "https://mangaplus.shueisha.co.jp", true, "WORKING", "المصدر الرسمي لمجلات شوئيشا وشونين جامب"),
-                SourceEntity("src_comick", "Comick", "https://comick.io", true, "WORKING", "واجهة سلسة وتصنيفات مانجا ومانهوا ممتازة"),
-                SourceEntity("src_zeroscans", "ZeroScans", "https://zeroscans.com", false, "WORKING", "فريق ترجمة مانهوا كورية مميز"),
-                SourceEntity("src_teamx", "Team X", "https://teamxnovel.com", false, "SLOW", "ترجمات عربية وروايات خفيفة"),
-                SourceEntity("src_3asq", "3asq Manga", "https://3asq.com", false, "WORKING", "أشهر موقع عربي لترجمة المانجا الشهيرة"),
-                SourceEntity("src_mangalek", "MangaLek", "https://mangalek.com", false, "DOWN", "موقع عربي للمانهوا والمانجا المترجمة")
-            )
-            sourceDao.insertSources(defaultSources)
+            // Seed 8 Official Sources
+            sourceDao.insertSources(com.example.data.model.MangaSourceConfig.OFFICIAL_SOURCES)
 
             // Seed Download Tasks (matching Image 10)
             val defaultDownloads = listOf(

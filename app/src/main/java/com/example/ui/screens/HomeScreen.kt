@@ -278,7 +278,7 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     onClick = {
-                        viewModel.navigateTo(SubScreen.Browser("https://mangadex.org"))
+                        viewModel.navigateTo(SubScreen.Browser(com.example.data.model.MangaSourceConfig.DEFAULT_SOURCE_URL))
                     }
                 ) {
                     Row(

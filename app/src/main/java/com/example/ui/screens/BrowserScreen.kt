@@ -1,12 +1,13 @@
 package com.example.ui.screens
 
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Build
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.webkit.*
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.Image
@@ -33,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,9 +45,9 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.example.R
 import com.example.data.local.MangaEntity
 import com.example.data.local.SourceEntity
+import com.example.data.model.MangaSourceConfig
 import com.example.ui.components.GlassCard
 import com.example.ui.components.MangaZzTopBar
-import com.example.ui.components.NavTab
 import com.example.ui.theme.*
 import com.example.ui.viewmodel.MangaViewModel
 import com.example.ui.viewmodel.SubScreen
@@ -65,21 +67,26 @@ enum class BrowserViewMode {
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun BrowserScreen(
-    initialUrl: String = "https://mangadex.org",
+    initialUrl: String = MangaSourceConfig.DEFAULT_SOURCE_URL,
     viewModel: MangaViewModel,
     onBack: () -> Unit
 ) {
     val colors = LocalMangaZzColors.current
+    val context = LocalContext.current
     val allSources by viewModel.allSources.collectAsState()
     val allManga by viewModel.allManga.collectAsState()
 
-    // Determine initial source from URL or default to first
-    var currentSource by remember(allSources, initialUrl) {
+    // Determine current source from official sources
+    val availableSources = remember(allSources) {
+        if (allSources.isNotEmpty()) allSources else MangaSourceConfig.OFFICIAL_SOURCES
+    }
+
+    var currentSource by remember(availableSources, initialUrl) {
         mutableStateOf(
-            allSources.firstOrNull { it.url.contains(initialUrl.removePrefix("https://").take(10), ignoreCase = true) }
-                ?: allSources.firstOrNull { it.url == initialUrl }
-                ?: allSources.firstOrNull()
-                ?: SourceEntity("src_mangadex", "MangaDex", initialUrl, true, "WORKING", "أكبر مجتمع مفتوح للمانجا")
+            availableSources.firstOrNull { it.url.contains(initialUrl.removePrefix("https://").take(8), ignoreCase = true) }
+                ?: availableSources.firstOrNull { it.url == initialUrl }
+                ?: availableSources.firstOrNull()
+                ?: MangaSourceConfig.OFFICIAL_SOURCES.first()
         )
     }
 
@@ -91,22 +98,18 @@ fun BrowserScreen(
     var selectedGenre by remember { mutableStateOf("الكل") }
     var catalogSearchQuery by remember { mutableStateOf("") }
 
-    // WebView state
+    // WebView state & Error diagnosis
     var webViewInstance by remember { mutableStateOf<WebView?>(null) }
     var currentWebUrl by remember { mutableStateOf(initialUrl) }
     var pageTitle by remember { mutableStateOf(currentSource.name) }
     var isLoading by remember { mutableFloatStateOf(0f) }
     var isPageLoading by remember { mutableStateOf(false) }
     var isDesktopMode by remember { mutableStateOf(false) }
+    var hasError by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf("") }
+    var errorFailingUrl by remember { mutableStateOf("") }
 
-    val tabs = remember {
-        mutableStateListOf(
-            BrowserTab(id = "tab_1", title = currentSource.name, url = currentSource.url)
-        )
-    }
-    var activeTabIndex by remember { mutableIntStateOf(0) }
-
-    // Back button handling
+    // Intercept hardware back button
     BackHandler {
         if (viewMode == BrowserViewMode.WEBVIEW && webViewInstance?.canGoBack() == true) {
             webViewInstance?.goBack()
@@ -196,7 +199,9 @@ fun BrowserScreen(
                             text = currentSource.name,
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Icon(
@@ -227,6 +232,7 @@ fun BrowserScreen(
                             isSelected = viewMode == BrowserViewMode.WEBVIEW,
                             onClick = {
                                 viewMode = BrowserViewMode.WEBVIEW
+                                hasError = false
                                 currentWebUrl = currentSource.url
                                 webViewInstance?.loadUrl(currentSource.url)
                             }
@@ -297,7 +303,7 @@ fun BrowserScreen(
                             )
                         }
 
-                        // Category Filter Chips (الأعمال الشائعة, الأحدث, الأعلى تقييماً, المكتملة)
+                        // Category Filter Chips
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -363,7 +369,7 @@ fun BrowserScreen(
                             }
                         }
 
-                        // 2-Column Catalog Manga Grid (TachiyomiAZ style, matching Image 3)
+                        // 2-Column Catalog Manga Grid
                         if (catalogManga.isEmpty()) {
                             Box(
                                 modifier = Modifier
@@ -420,9 +426,9 @@ fun BrowserScreen(
                         }
                     }
                 } else {
-                    // DIRECT IN-APP WEBVIEW
+                    // DIRECT IN-APP WEBVIEW WITH FULL ERROR HANDLING
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Web Navigation Bar (Back, Forward, Reload, Address Bar, Bookmark)
+                        // Web Navigation Bar
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -454,7 +460,10 @@ fun BrowserScreen(
                             }
 
                             IconButton(
-                                onClick = { webViewInstance?.reload() },
+                                onClick = {
+                                    hasError = false
+                                    webViewInstance?.reload()
+                                },
                                 modifier = Modifier.size(34.dp)
                             ) {
                                 Icon(
@@ -478,9 +487,9 @@ fun BrowserScreen(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.Lock,
-                                        contentDescription = "آمن",
-                                        tint = Color(0xFF00E676),
+                                        imageVector = if (hasError) Icons.Default.Warning else Icons.Default.Lock,
+                                        contentDescription = "حالة الأمان",
+                                        tint = if (hasError) Color(0xFFFF5252) else Color(0xFF00E676),
                                         modifier = Modifier.size(13.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
@@ -496,15 +505,21 @@ fun BrowserScreen(
 
                             Spacer(modifier = Modifier.width(6.dp))
 
+                            // Open in external browser icon
                             IconButton(
                                 onClick = {
-                                    viewModel.toggleFavorite("solo_leveling", false)
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(currentWebUrl))
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        viewModel.postNotification("تعذر فتح الرابط خارجياً")
+                                    }
                                 },
                                 modifier = Modifier.size(34.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.BookmarkBorder,
-                                    contentDescription = "حفظ للمفضلة",
+                                    imageVector = Icons.Default.OpenInBrowser,
+                                    contentDescription = "فتح خارجياً",
                                     tint = colors.primary,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -523,64 +538,236 @@ fun BrowserScreen(
                             )
                         }
 
-                        // Web View Interop
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { ctx ->
-                                WebView(ctx).apply {
-                                    layoutParams = ViewGroup.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_PARENT,
-                                        ViewGroup.LayoutParams.MATCH_PARENT
-                                    )
-                                    settings.javaScriptEnabled = true
-                                    settings.domStorageEnabled = true
-                                    settings.databaseEnabled = true
-                                    settings.useWideViewPort = true
-                                    settings.loadWithOverviewMode = true
-                                    settings.setSupportZoom(true)
-                                    settings.builtInZoomControls = true
-                                    settings.displayZoomControls = false
+                        // WebView Container or Custom Error UI
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                        ) {
+                            AndroidView(
+                                modifier = Modifier.fillMaxSize(),
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        val webViewInstanceRef = this
+                                        layoutParams = ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
 
-                                    webViewClient = object : WebViewClient() {
-                                        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                            super.onPageStarted(view, url, favicon)
-                                            isPageLoading = true
-                                            url?.let { currentWebUrl = it }
+                                        CookieManager.getInstance().apply {
+                                            setAcceptCookie(true)
+                                            setAcceptThirdPartyCookies(webViewInstanceRef, true)
                                         }
 
-                                        override fun onPageFinished(view: WebView?, url: String?) {
-                                            super.onPageFinished(view, url)
-                                            isPageLoading = false
-                                            view?.title?.let { pageTitle = it }
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.databaseEnabled = true
+                                        settings.useWideViewPort = true
+                                        settings.loadWithOverviewMode = true
+                                        settings.setSupportZoom(true)
+                                        settings.builtInZoomControls = true
+                                        settings.displayZoomControls = false
+                                        settings.cacheMode = WebSettings.LOAD_DEFAULT
+                                        settings.userAgentString =
+                                            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+
+                                        webViewClient = object : WebViewClient() {
+                                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                                                super.onPageStarted(view, url, favicon)
+                                                isPageLoading = true
+                                                hasError = false
+                                                url?.let { currentWebUrl = it }
+                                            }
+
+                                            override fun onPageFinished(view: WebView?, url: String?) {
+                                                super.onPageFinished(view, url)
+                                                isPageLoading = false
+                                                view?.title?.let { pageTitle = it }
+                                            }
+
+                                            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                                                val uri = request?.url ?: return false
+                                                val scheme = uri.scheme ?: ""
+                                                if (scheme == "http" || scheme == "https") {
+                                                    return false // Load in WebView
+                                                }
+                                                return try {
+                                                    val intent = Intent(Intent.ACTION_VIEW, uri)
+                                                    context.startActivity(intent)
+                                                    true
+                                                } catch (e: Exception) {
+                                                    true
+                                                }
+                                            }
+
+                                            @Deprecated("Deprecated in Java")
+                                            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                                                super.onReceivedError(view, errorCode, description, failingUrl)
+                                                hasError = true
+                                                errorFailingUrl = failingUrl ?: currentWebUrl
+                                                errorMessage = when (errorCode) {
+                                                    ERROR_HOST_LOOKUP -> "تعذر حل اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)\nتحقق من اتصال الإنترنت أو صحة عنوان الموقع."
+                                                    ERROR_CONNECT -> "فشل الاتصال بخادم الموقع (ERR_CONNECTION_REFUSED)"
+                                                    ERROR_TIMEOUT -> "انتهت مهلة انتظار خادم الموقع (ERR_TIMED_OUT)"
+                                                    ERROR_FAILED_SSL_HANDSHAKE -> "فشل تأمين الاتصال المشفر (SSL Handshake Failed)"
+                                                    else -> description ?: "حدث خطأ في تحميل الصفحة ($errorCode)"
+                                                }
+                                            }
+
+                                            @TargetApi(Build.VERSION_CODES.M)
+                                            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                                                super.onReceivedError(view, request, error)
+                                                if (request?.isForMainFrame == true) {
+                                                    hasError = true
+                                                    errorFailingUrl = request.url?.toString() ?: currentWebUrl
+                                                    val desc = error?.description?.toString() ?: ""
+                                                    errorMessage = if (desc.contains("NAME_NOT_RESOLVED", ignoreCase = true)) {
+                                                        "تعذر حل اسم النطاق DNS (ERR_NAME_NOT_RESOLVED)\nتحقق من اتصال الإنترنت أو صحة عنوان الموقع."
+                                                    } else {
+                                                        "تعذر تحميل الموقع: $desc"
+                                                    }
+                                                }
+                                            }
                                         }
+
+                                        webChromeClient = object : WebChromeClient() {
+                                            override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                                super.onProgressChanged(view, newProgress)
+                                                isLoading = newProgress / 100f
+                                                if (newProgress >= 100) isPageLoading = false
+                                            }
+                                        }
+
+                                        loadUrl(currentWebUrl)
+                                        webViewInstance = this
                                     }
-
-                                    webChromeClient = object : WebChromeClient() {
-                                        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                                            super.onProgressChanged(view, newProgress)
-                                            isLoading = newProgress / 100f
-                                            if (newProgress >= 100) isPageLoading = false
-                                        }
+                                },
+                                update = { view ->
+                                    if (isDesktopMode) {
+                                        view.settings.userAgentString =
+                                            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                                    } else {
+                                        view.settings.userAgentString =
+                                            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
                                     }
-
-                                    loadUrl(currentWebUrl)
-                                    webViewInstance = this
                                 }
-                            },
-                            update = { view ->
-                                if (isDesktopMode) {
-                                    view.settings.userAgentString =
-                                        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                                } else {
-                                    view.settings.userAgentString = null
+                            )
+
+                            // Overlay Native Error View when connection fails
+                            if (hasError) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(Color(0xF5040712))
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    GlassCard(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        borderColor = Color(0xFFFF5252).copy(alpha = 0.6f)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(20.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(56.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0x33FF5252)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.CloudOff,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFF5252),
+                                                    modifier = Modifier.size(32.dp)
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(14.dp))
+
+                                            Text(
+                                                text = "تعذر الوصول إلى الموقع",
+                                                color = TextPrimary,
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+
+                                            Spacer(modifier = Modifier.height(6.dp))
+
+                                            Text(
+                                                text = errorMessage,
+                                                color = TextSecondary,
+                                                fontSize = 12.sp,
+                                                textAlign = TextAlign.Center,
+                                                lineHeight = 18.sp
+                                            )
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            Text(
+                                                text = errorFailingUrl,
+                                                color = colors.primary,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            Spacer(modifier = Modifier.height(18.dp))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Button(
+                                                    onClick = {
+                                                        hasError = false
+                                                        webViewInstance?.loadUrl(currentSource.url)
+                                                    },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = colors.primary,
+                                                        contentColor = Color.Black
+                                                    ),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.weight(1f)
+                                                ) {
+                                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("إعادة المحاولة", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                }
+
+                                                OutlinedButton(
+                                                    onClick = { viewMode = BrowserViewMode.CATALOG },
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.weight(1f),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, colors.border)
+                                                ) {
+                                                    Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(16.dp), tint = colors.primary)
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("الكتالوج", color = TextPrimary, fontSize = 11.sp)
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            TextButton(
+                                                onClick = { showSourcePickerSheet = true }
+                                            ) {
+                                                Text("اختيار مصدر آخر من المصادر الثمانية ◄", color = colors.primary, fontSize = 11.sp)
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        )
+                        }
                     }
                 }
             }
 
-            // Bottom Browser Toolbar (القارئ, ترجمة, حفظ للمكتبة, تبديل العرض, تبديل المصدر)
+            // Bottom Browser Toolbar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -651,7 +838,7 @@ fun BrowserScreen(
         }
     }
 
-    // TachiyomiAZ Source Selection Bottom Sheet
+    // Source Selection Bottom Sheet - Displays ONLY the 8 Official Sources
     if (showSourcePickerSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSourcePickerSheet = false },
@@ -678,12 +865,19 @@ fun BrowserScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "اختر مصدر المانجا (كتالوج TachiyomiAZ)",
-                        color = TextPrimary,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Column {
+                        Text(
+                            text = "المصادر المعتمدة (${availableSources.size})",
+                            color = TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "اختر من المواقع الثمانية الرسمية لتصفح الكتالوج",
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
                     IconButton(onClick = { showSourcePickerSheet = false }) {
                         Icon(
                             imageVector = Icons.Default.Close,
@@ -695,7 +889,7 @@ fun BrowserScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                allSources.forEach { src ->
+                availableSources.forEach { src ->
                     val isSelected = src.id == currentSource.id
                     GlassCard(
                         modifier = Modifier
@@ -706,6 +900,7 @@ fun BrowserScreen(
                             currentSource = src
                             currentWebUrl = src.url
                             pageTitle = src.name
+                            hasError = false
                             webViewInstance?.loadUrl(src.url)
                             showSourcePickerSheet = false
                             viewModel.postNotification("تم التبديل إلى مصدر: ${src.name} ⚡")
@@ -725,7 +920,7 @@ fun BrowserScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = if (src.isBuiltIn) Icons.Default.Explore else Icons.Default.Language,
+                                    imageVector = Icons.Default.Explore,
                                     contentDescription = null,
                                     tint = if (isSelected) Color.Black else colors.primary,
                                     modifier = Modifier.size(20.dp)
