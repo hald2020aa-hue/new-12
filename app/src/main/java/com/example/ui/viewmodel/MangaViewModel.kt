@@ -76,11 +76,28 @@ class MangaViewModel(application: Application) : AndroidViewModel(application) {
     private val _backgroundOpacity = MutableStateFlow(0.70f)
     val backgroundOpacity = _backgroundOpacity.asStateFlow()
 
+    // Custom Library Folders
+    private val _customFolders = MutableStateFlow(listOf("جميع المجلدات", "المتابعة", "المكتملة", "المفضلة", "قائمة الانتظار"))
+    val customFolders = _customFolders.asStateFlow()
+
     // Toast/Snackbar notifications
     private val _notificationMessage = MutableSharedFlow<String>()
     val notificationMessage = _notificationMessage.asSharedFlow()
 
     private val downloadSimulationJobs = mutableMapOf<String, Job>()
+
+    fun postNotification(message: String) {
+        viewModelScope.launch {
+            _notificationMessage.emit(message)
+        }
+    }
+
+    fun addFolder(folderName: String) {
+        if (folderName.isNotBlank() && !_customFolders.value.contains(folderName)) {
+            _customFolders.value = _customFolders.value + folderName
+            postNotification("تم إنشاء مجلد جديد: $folderName")
+        }
+    }
 
     init {
         viewModelScope.launch {
@@ -227,6 +244,34 @@ class MangaViewModel(application: Application) : AndroidViewModel(application) {
             repository.deleteSource(sourceId)
             _notificationMessage.emit("تم حذف المصدر")
         }
+    }
+
+    fun importSourcesPreset() {
+        viewModelScope.launch {
+            val presets = listOf(
+                Pair("GManga", "https://gmanga.org"),
+                Pair("ArabManga", "https://arabmanga.net"),
+                Pair("Webtoon AR", "https://www.webtoons.com/ar")
+            )
+            presets.forEach { (name, url) ->
+                repository.addCustomSource(name, url)
+            }
+            _notificationMessage.emit("تم استيراد ${presets.size} مصادر إضافية بنجاح ⚡")
+        }
+    }
+
+    fun exportSourcesJson(): String {
+        val sources = allSources.value
+        val array = org.json.JSONArray()
+        sources.forEach { s ->
+            val obj = org.json.JSONObject()
+            obj.put("name", s.name)
+            obj.put("url", s.url)
+            obj.put("isBuiltIn", s.isBuiltIn)
+            array.put(obj)
+        }
+        postNotification("تم تصدير ${sources.size} مصدر بصيغة JSON!")
+        return array.toString(2)
     }
 
     private fun simulateDownloadProgress(

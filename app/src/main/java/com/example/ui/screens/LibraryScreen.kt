@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,8 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -46,15 +50,25 @@ fun LibraryScreen(
     val allManga by viewModel.allManga.collectAsState()
     val favorites by viewModel.favorites.collectAsState()
     val readLater by viewModel.readLater.collectAsState()
+    val folders by viewModel.customFolders.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) } // 0: الكل, 1: المفضلة, 2: أقرأ لاحقاً, 3: المحملة
     var selectedFolder by remember { mutableStateOf("جميع المجلدات") }
     var searchQuery by remember { mutableStateOf("") }
     var isGridView by remember { mutableStateOf(true) }
 
-    val folders = listOf("جميع المجلدات", "المتابعة", "المكتملة", "المفضلة")
+    // Filter states
+    var selectedSort by remember { mutableStateOf("الأحدث إضافة") }
+    var selectedGenreFilter by remember { mutableStateOf("كل الأنواع") }
+    var selectedStatusFilter by remember { mutableStateOf("كل الحالات") }
 
-    val displayedManga = remember(allManga, selectedTab, selectedFolder, searchQuery) {
+    // Dialogs
+    var showAddFolderDialog by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var showGenreMenu by remember { mutableStateOf(false) }
+    var showStatusMenu by remember { mutableStateOf(false) }
+
+    val displayedManga = remember(allManga, selectedTab, selectedFolder, searchQuery, selectedSort, selectedGenreFilter, selectedStatusFilter) {
         var list = when (selectedTab) {
             1 -> favorites
             2 -> readLater
@@ -66,13 +80,27 @@ fun LibraryScreen(
             list = list.filter { it.folder == selectedFolder }
         }
 
+        if (selectedGenreFilter != "كل الأنواع") {
+            list = list.filter { it.genres.contains(selectedGenreFilter, ignoreCase = true) }
+        }
+
+        if (selectedStatusFilter != "كل الحالات") {
+            list = list.filter { it.status == selectedStatusFilter }
+        }
+
         if (searchQuery.isNotBlank()) {
             list = list.filter {
                 it.title.contains(searchQuery, ignoreCase = true) ||
                 it.titleArabic.contains(searchQuery, ignoreCase = true)
             }
         }
-        list
+
+        when (selectedSort) {
+            "الأعلى تقييماً" -> list.sortedByDescending { it.rating }
+            "أبجدياً" -> list.sortedBy { it.titleArabic }
+            "الفصول" -> list.sortedByDescending { it.totalChapters }
+            else -> list // "الأحدث إضافة"
+        }
     }
 
     Scaffold(
@@ -91,7 +119,7 @@ fun LibraryScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Search Input
+            // Interactive Search Input
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -114,11 +142,33 @@ fun LibraryScreen(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            text = if (searchQuery.isEmpty()) "ابحث في مكتبتك ..." else searchQuery,
-                            color = if (searchQuery.isEmpty()) TextSecondary else TextPrimary,
-                            fontSize = 13.sp
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            textStyle = TextStyle(color = TextPrimary, fontSize = 13.sp),
+                            cursorBrush = SolidColor(colors.primary),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "ابحث في مكتبتك ...",
+                                        color = TextSecondary,
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                innerTextField()
+                            }
                         )
+                        if (searchQuery.isNotEmpty()) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "مسح",
+                                tint = TextSecondary,
+                                modifier = Modifier
+                                    .size(18.dp)
+                                    .clickable { searchQuery = "" }
+                            )
+                        }
                     }
                 }
                 Spacer(modifier = Modifier.width(10.dp))
@@ -127,7 +177,8 @@ fun LibraryScreen(
                         .size(46.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(colors.cardGlass)
-                        .border(1.dp, colors.border, RoundedCornerShape(16.dp)),
+                        .border(1.dp, colors.border, RoundedCornerShape(16.dp))
+                        .clickable { showSortMenu = true },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -189,9 +240,21 @@ fun LibraryScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    LibraryFilterPill(title = "الأحدث إضافة", icon = Icons.Default.SwapVert)
-                    LibraryFilterPill(title = "كل الأنواع", icon = Icons.Default.MenuBook)
-                    LibraryFilterPill(title = "كل الحالات", icon = Icons.Default.LocalOffer)
+                    LibraryFilterPill(
+                        title = selectedSort,
+                        icon = Icons.Default.SwapVert,
+                        onClick = { showSortMenu = true }
+                    )
+                    LibraryFilterPill(
+                        title = selectedGenreFilter,
+                        icon = Icons.Default.MenuBook,
+                        onClick = { showGenreMenu = true }
+                    )
+                    LibraryFilterPill(
+                        title = selectedStatusFilter,
+                        icon = Icons.Default.LocalOffer,
+                        onClick = { showStatusMenu = true }
+                    )
                 }
 
                 Row(
@@ -274,7 +337,7 @@ fun LibraryScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .background(colors.cardGlass)
                             .border(1.dp, colors.border, RoundedCornerShape(12.dp))
-                            .clickable { }
+                            .clickable { showAddFolderDialog = true }
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Icon(
@@ -287,29 +350,241 @@ fun LibraryScreen(
                 }
             }
 
-            // Manga Cards Grid (3 Columns)
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp),
-                contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(displayedManga, key = { it.id }) { manga ->
-                    LibraryMangaItem(
-                        manga = manga,
-                        onClick = {
-                            viewModel.navigateTo(SubScreen.MangaDetail(manga.id))
-                        },
-                        onFavoriteClick = {
-                            viewModel.toggleFavorite(manga.id, manga.isFavorite)
+            // Content Area: Grid View vs List View
+            if (isGridView) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 12.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 96.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(displayedManga, key = { it.id }) { manga ->
+                        LibraryMangaItem(
+                            manga = manga,
+                            onClick = {
+                                viewModel.navigateTo(SubScreen.MangaDetail(manga.id))
+                            },
+                            onFavoriteClick = {
+                                viewModel.toggleFavorite(manga.id, manga.isFavorite)
+                            }
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(top = 6.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(displayedManga, key = { it.id }) { manga ->
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = { viewModel.navigateTo(SubScreen.MangaDetail(manga.id)) }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Image(
+                                    painter = painterResource(id = manga.coverDrawable),
+                                    contentDescription = manga.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .size(60.dp, 80.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = manga.titleArabic,
+                                        color = TextPrimary,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = manga.title,
+                                        color = TextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "الفصل ${manga.currentChapter} • ${manga.genres.split(",").firstOrNull()?.trim() ?: ""}",
+                                        color = colors.secondary,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                                IconButton(onClick = { viewModel.toggleFavorite(manga.id, manga.isFavorite) }) {
+                                    Icon(
+                                        imageVector = if (manga.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = "مفضلة",
+                                        tint = if (manga.isFavorite) Color(0xFFFF5252) else TextSecondary
+                                    )
+                                }
+                            }
                         }
-                    )
+                    }
                 }
             }
         }
+    }
+
+    // Add Folder Dialog
+    if (showAddFolderDialog) {
+        var folderInput by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddFolderDialog = false },
+            title = {
+                Text("إنشاء مجلد جديد في المكتبة", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            },
+            text = {
+                OutlinedTextField(
+                    value = folderInput,
+                    onValueChange = { folderInput = it },
+                    placeholder = { Text("مثال: مانجا الشتاء، المفضلة الخاصة ...", color = TextSecondary, fontSize = 12.sp) },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colors.primary,
+                        unfocusedBorderColor = colors.border,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (folderInput.isNotBlank()) {
+                            viewModel.addFolder(folderInput.trim())
+                            showAddFolderDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.Black)
+                ) {
+                    Text("إضافة")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddFolderDialog = false }) {
+                    Text("إلغاء", color = TextSecondary)
+                }
+            },
+            containerColor = Color(0xFF071224)
+        )
+    }
+
+    // Sort Menu Dialog
+    if (showSortMenu) {
+        val sortOptions = listOf("الأحدث إضافة", "الأعلى تقييماً", "أبجدياً", "الفصول")
+        AlertDialog(
+            onDismissRequest = { showSortMenu = false },
+            title = { Text("ترتيب الأعمال", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    sortOptions.forEach { opt ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selectedSort == opt) colors.primary.copy(alpha = 0.2f) else Color.Transparent)
+                                .clickable {
+                                    selectedSort = opt
+                                    showSortMenu = false
+                                }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = opt,
+                                color = if (selectedSort == opt) colors.primary else TextPrimary,
+                                fontWeight = if (selectedSort == opt) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            containerColor = Color(0xFF071224)
+        )
+    }
+
+    // Genre Filter Menu Dialog
+    if (showGenreMenu) {
+        val genreOptions = listOf("كل الأنواع", "أكشن", "فانتازيا", "مغامرات", "رعب", "رياضة", "شياطين")
+        AlertDialog(
+            onDismissRequest = { showGenreMenu = false },
+            title = { Text("تصفية حسب التصنيف", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    genreOptions.forEach { g ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selectedGenreFilter == g) colors.primary.copy(alpha = 0.2f) else Color.Transparent)
+                                .clickable {
+                                    selectedGenreFilter = g
+                                    showGenreMenu = false
+                                }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = g,
+                                color = if (selectedGenreFilter == g) colors.primary else TextPrimary,
+                                fontWeight = if (selectedGenreFilter == g) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            containerColor = Color(0xFF071224)
+        )
+    }
+
+    // Status Filter Menu Dialog
+    if (showStatusMenu) {
+        val statusOptions = listOf("كل الحالات", "مستمر", "مكتمل")
+        AlertDialog(
+            onDismissRequest = { showStatusMenu = false },
+            title = { Text("تصفية حسب الحالة", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    statusOptions.forEach { st ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selectedStatusFilter == st) colors.primary.copy(alpha = 0.2f) else Color.Transparent)
+                                .clickable {
+                                    selectedStatusFilter = st
+                                    showStatusMenu = false
+                                }
+                                .padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = st,
+                                color = if (selectedStatusFilter == st) colors.primary else TextPrimary,
+                                fontWeight = if (selectedStatusFilter == st) FontWeight.Bold else FontWeight.Normal,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            containerColor = Color(0xFF071224)
+        )
     }
 }
 
@@ -328,7 +603,11 @@ fun LibraryTabChip(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
             .background(if (isSelected) colors.primary else colors.cardGlass)
-            .border(1.dp, if (isSelected) colors.primary else colors.border, RoundedCornerShape(14.dp))
+            .border(
+                1.dp,
+                if (isSelected) colors.primary else colors.border,
+                RoundedCornerShape(14.dp)
+            )
             .clickable { onClick() }
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
@@ -336,7 +615,7 @@ fun LibraryTabChip(
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = title,
                 tint = if (isSelected) Color.Black else TextSecondary,
                 modifier = Modifier.size(16.dp)
             )
@@ -344,8 +623,8 @@ fun LibraryTabChip(
             Text(
                 text = title,
                 color = if (isSelected) Color.Black else TextPrimary,
-                fontSize = 11.sp,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                fontSize = 10.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
             )
             Text(
                 text = "$count أعمال",
@@ -492,7 +771,8 @@ fun LibraryMangaItem(
 @Composable
 fun LibraryFilterPill(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit = {}
 ) {
     val colors = LocalMangaZzColors.current
     Row(
@@ -500,7 +780,7 @@ fun LibraryFilterPill(
             .clip(RoundedCornerShape(8.dp))
             .background(Color(0xFF091427))
             .border(1.dp, colors.border, RoundedCornerShape(8.dp))
-            .clickable { }
+            .clickable { onClick() }
             .padding(horizontal = 8.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -526,4 +806,3 @@ fun LibraryFilterPill(
         )
     }
 }
-

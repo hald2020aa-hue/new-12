@@ -130,6 +130,9 @@ fun MangaDetailScreen(
                             )
                         }
 
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        var showMoreOptions by remember { mutableStateOf(false) }
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -137,7 +140,15 @@ fun MangaDetailScreen(
                                     .clip(CircleShape)
                                     .background(Color(0x990A1120))
                                     .border(1.dp, colors.border, CircleShape)
-                                    .clickable { },
+                                    .clickable {
+                                        val sendIntent = android.content.Intent().apply {
+                                            action = android.content.Intent.ACTION_SEND
+                                            putExtra(android.content.Intent.EXTRA_TEXT, "اقرأ مانجا ${manga.titleArabic} (${manga.title}) على تطبيق Manga ZZ!")
+                                            type = "text/plain"
+                                        }
+                                        val shareIntent = android.content.Intent.createChooser(sendIntent, "مشاركة المانجا")
+                                        context.startActivity(shareIntent)
+                                    },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -154,7 +165,7 @@ fun MangaDetailScreen(
                                     .clip(CircleShape)
                                     .background(Color(0x990A1120))
                                     .border(1.dp, colors.border, CircleShape)
-                                    .clickable { },
+                                    .clickable { showMoreOptions = true },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
@@ -163,6 +174,38 @@ fun MangaDetailScreen(
                                     tint = TextPrimary,
                                     modifier = Modifier.size(20.dp)
                                 )
+
+                                DropdownMenu(
+                                    expanded = showMoreOptions,
+                                    onDismissRequest = { showMoreOptions = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("فتح في المتصفح المدمج") },
+                                        onClick = {
+                                            showMoreOptions = false
+                                            viewModel.navigateTo(SubScreen.Browser())
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Language, contentDescription = null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("تنزيل كل الفصول") },
+                                        onClick = {
+                                            showMoreOptions = false
+                                            chapters.forEach { ch ->
+                                                viewModel.startDownload(manga, ch.chapterNumber, ch.title, ch.downloadSizeMb)
+                                            }
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(if (manga.isFavorite) "إزالة من المفضلة" else "إضافة إلى المفضلة") },
+                                        onClick = {
+                                            showMoreOptions = false
+                                            viewModel.toggleFavorite(manga.id, manga.isFavorite)
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Favorite, contentDescription = null) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -531,11 +574,33 @@ fun MangaDetailScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "البحث في الفصول ...",
-                            color = TextSecondary,
-                            fontSize = 11.sp
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = chapterSearchQuery,
+                            onValueChange = { chapterSearchQuery = it },
+                            textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 12.sp),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (chapterSearchQuery.isEmpty()) {
+                                    Text(
+                                        text = "البحث في الفصول (رقم أو عنوان) ...",
+                                        color = TextSecondary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                innerTextField()
+                            }
                         )
+                        if (chapterSearchQuery.isNotEmpty()) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "مسح",
+                                tint = TextSecondary,
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .clickable { chapterSearchQuery = "" }
+                            )
+                        }
                     }
                 }
 

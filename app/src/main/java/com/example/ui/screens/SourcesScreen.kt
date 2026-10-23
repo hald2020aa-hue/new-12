@@ -114,6 +114,9 @@ fun SourcesScreen(
 
             // Search Bar
             item {
+                var showExportDialog by remember { mutableStateOf(false) }
+                var exportedJsonText by remember { mutableStateOf("") }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -136,11 +139,33 @@ fun SourcesScreen(
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text(
-                                text = if (searchQuery.isEmpty()) "ابحث عن موقع ..." else searchQuery,
-                                color = if (searchQuery.isEmpty()) TextSecondary else TextPrimary,
-                                fontSize = 13.sp
+                            androidx.compose.foundation.text.BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 13.sp),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.primary),
+                                modifier = Modifier.weight(1f),
+                                decorationBox = { innerTextField ->
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            text = "ابحث عن موقع مانجا ...",
+                                            color = TextSecondary,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    innerTextField()
+                                }
                             )
+                            if (searchQuery.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "مسح",
+                                    tint = TextSecondary,
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clickable { searchQuery = "" }
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.width(10.dp))
@@ -149,7 +174,10 @@ fun SourcesScreen(
                             .size(46.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(colors.cardGlass)
-                            .border(1.dp, colors.border, RoundedCornerShape(16.dp)),
+                            .border(1.dp, colors.border, RoundedCornerShape(16.dp))
+                            .clickable {
+                                selectedFilterIndex = (selectedFilterIndex + 1) % 3
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
@@ -196,6 +224,9 @@ fun SourcesScreen(
 
             // Action Buttons: إضافة موقع +, استيراد, تصدير
             item {
+                var showExportJsonDialog by remember { mutableStateOf(false) }
+                var exportedJson by remember { mutableStateOf("") }
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -226,7 +257,9 @@ fun SourcesScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { },
+                        onClick = {
+                            viewModel.importSourcesPreset()
+                        },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                         border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                         shape = RoundedCornerShape(14.dp),
@@ -244,7 +277,10 @@ fun SourcesScreen(
                     }
 
                     OutlinedButton(
-                        onClick = { },
+                        onClick = {
+                            exportedJson = viewModel.exportSourcesJson()
+                            showExportJsonDialog = true
+                        },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = TextPrimary),
                         border = androidx.compose.foundation.BorderStroke(1.dp, colors.border),
                         shape = RoundedCornerShape(14.dp),
@@ -260,6 +296,47 @@ fun SourcesScreen(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(text = "تصدير", fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     }
+                }
+
+                if (showExportJsonDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showExportJsonDialog = false },
+                        title = {
+                            Text("تصدير المصادر (JSON)", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        },
+                        text = {
+                            Column {
+                                Text("تم تجهيز قائمة المصادر بنجاح بصيغة JSON:", color = TextSecondary, fontSize = 12.sp)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(150.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF040812))
+                                        .padding(8.dp)
+                                ) {
+                                    Text(
+                                        text = exportedJson.take(300) + if (exportedJson.length > 300) "..." else "",
+                                        color = colors.primary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    viewModel.postNotification("تم حفظ وتصدير المصادر بنجاح!")
+                                    showExportJsonDialog = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = colors.primary, contentColor = Color.Black)
+                            ) {
+                                Text("موافق")
+                            }
+                        },
+                        containerColor = Color(0xFF071224)
+                    )
                 }
             }
 

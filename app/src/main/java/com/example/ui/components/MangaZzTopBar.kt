@@ -14,7 +14,7 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +40,8 @@ fun MangaZzTopBar(
     actions: (@Composable RowScope.() -> Unit)? = null
 ) {
     val colors = LocalMangaZzColors.current
+
+    var showNotificationModal by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -78,7 +80,13 @@ fun MangaZzTopBar(
                         .clip(CircleShape)
                         .background(Color(0xFF0C162A))
                         .border(1.dp, colors.border, CircleShape)
-                        .clickable { onNotificationClick?.invoke() },
+                        .clickable {
+                            if (onNotificationClick != null) {
+                                onNotificationClick()
+                            } else {
+                                showNotificationModal = true
+                            }
+                        },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -193,5 +201,108 @@ fun MangaZzTopBar(
                 }
             }
         }
+    }
+
+    if (showNotificationModal) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showNotificationModal = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = colors.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "إشعارات المانجا",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    NotificationItemRow(
+                        title = "فصل جديد: Solo Leveling",
+                        body = "صدر الفصل 180 مترجماً بالعربية بالكامل!",
+                        time = "منذ 15 دقيقة",
+                        isNew = true
+                    )
+                    NotificationItemRow(
+                        title = "تحديث المصادر ⚡",
+                        body = "تم تحديث كتالوج MangaDex و Comick بنجاح",
+                        time = "منذ ساعتين",
+                        isNew = false
+                    )
+                    NotificationItemRow(
+                        title = "عضوية PRO الذهبية",
+                        body = "تصفح بدون إعلانات وقراءة سريعة دون حدود مفعلة",
+                        time = "أمس",
+                        isNew = false
+                    )
+                }
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = { showNotificationModal = false },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = colors.primary,
+                        contentColor = Color.Black
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("تم", fontWeight = FontWeight.Bold)
+                }
+            },
+            containerColor = Color(0xFF071224),
+            shape = RoundedCornerShape(18.dp)
+        )
+    }
+}
+
+@Composable
+fun NotificationItemRow(
+    title: String,
+    body: String,
+    time: String,
+    isNew: Boolean
+) {
+    val colors = LocalMangaZzColors.current
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF0A1830))
+            .border(1.dp, if (isNew) colors.primary.copy(alpha = 0.5f) else colors.border, RoundedCornerShape(12.dp))
+            .padding(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                color = if (isNew) colors.primary else TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+            Text(
+                text = time,
+                color = TextSecondary,
+                fontSize = 10.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = body,
+            color = TextSecondary,
+            fontSize = 11.sp,
+            lineHeight = 15.sp
+        )
     }
 }
